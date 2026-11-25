@@ -47,7 +47,7 @@
         <Border x:Name="LoginPanel" Width="390" Padding="22" CornerRadius="12"
                 VerticalAlignment="Center" HorizontalAlignment="Center" Background="#1B2432">
             <StackPanel Spacing="8">
-                <TextBlock Text="Адрес бэкенда" />
+                <TextBlock x:Name="BackendAddressLabel" Text="Адрес бэкенда" />
                 <TextBox x:Name="BackendAddress" PlaceholderText="https://launcher.example.org" />
                 <TextBlock Text="Логин" />
                 <TextBox x:Name="UserName" />

@@ -86,6 +86,13 @@ public sealed partial class MainWindow : Window
             ShowStatus("Не удалось прочитать настройки лаунчера.");
         }
 
+        if (EmbeddedBackend.Read() is { } embedded)
+        {
+            if (!string.Equals(settings.BackendAddress, embedded, StringComparison.Ordinal))
+                settings = settings with { BackendAddress = embedded, ProtectedPassword = null };
+            BackendAddressLabel.IsVisible = BackendAddress.IsVisible = false;
+        }
+
         ShowServerPaths();
         BackendAddress.Text = settings.BackendAddress;
         UserName.Text = settings.UserName;
