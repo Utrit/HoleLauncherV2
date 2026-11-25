@@ -4,12 +4,18 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: launcher-release-${{ github.ref }}
+  group: launcher-release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -26,8 +32,12 @@ jobs:
           - os: ubuntu-latest
             rid: linux-x64
             executable: HoleLauncher
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
@@ -69,6 +79,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -78,9 +89,9 @@ jobs:
       - name: Publish release assets
         run: |
           assets=(release/HoleLauncher-win-x64.exe release/HoleLauncher-linux-x64.tar.gz)
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "${assets[@]}" --verify-tag --generate-notes
+            gh release create "$RELEASE_TAG" "${assets[@]}" --verify-tag --generate-notes
           fi
 
