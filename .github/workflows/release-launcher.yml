@@ -1,0 +1,86 @@
+name: Release launcher
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: launcher-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            executable: HoleLauncher.exe
+          - os: ubuntu-latest
+            rid: linux-x64
+            executable: HoleLauncher
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Publish single-file launcher
+        shell: pwsh
+        env:
+          RID: ${{ matrix.rid }}
+          EXECUTABLE: ${{ matrix.executable }}
+        run: |
+          dotnet publish HoleLauncher.csproj -c Release -r $env:RID -o publish
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $files = @(Get-ChildItem -LiteralPath publish -Force)
+          if ($files.Count -ne 1 -or $files[0].Name -cne $env:EXECUTABLE) {
+              throw "Expected only $env:EXECUTABLE in publish."
+          }
+
+          New-Item -ItemType Directory -Path release | Out-Null
+          if ($IsWindows) {
+              Copy-Item -LiteralPath $files[0].FullName -Destination "release/HoleLauncher-$env:RID.exe"
+          } else {
+              chmod +x "publish/$env:EXECUTABLE"
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+              tar -C publish -czf "release/HoleLauncher-$env:RID.tar.gz" $env:EXECUTABLE
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-${{ matrix.rid }}
+          path: release/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: launcher-*
+          path: release
+          merge-multiple: true
+      - name: Publish release assets
+        run: |
+          assets=(release/HoleLauncher-win-x64.exe release/HoleLauncher-linux-x64.tar.gz)
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" --verify-tag --generate-notes
+          fi
+
