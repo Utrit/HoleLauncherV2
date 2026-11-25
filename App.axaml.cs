@@ -13,7 +13,8 @@ public sealed partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var container = Setup.BuildContainer();
+            var serverMode = desktop.Args?.Contains("-server", StringComparer.OrdinalIgnoreCase) == true;
+            var container = Setup.BuildContainer(serverMode);
             desktop.Exit += (_, _) => container.Dispose();
             desktop.MainWindow = container.Resolve<MainWindow>();
         }

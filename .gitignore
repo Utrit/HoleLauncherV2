@@ -480,3 +480,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+/launcher-settings.json*
+/instances/
+/authlib-injector*.jar

@@ -1,6 +1,162 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="HoleLauncher.MainWindow"
-        Title="HoleLauncher"
-        Width="960"
-        Height="600" />
+        xmlns:local="using:HoleLauncher" x:Class="HoleLauncher.MainWindow"
+        Title="HoleLauncher" RequestedThemeVariant="Dark"
+        FontFamily="{StaticResource SnProMedium}" Background="#11161F"
+        Width="890" Height="570" MinWidth="720" MinHeight="465">
+    <Window.Resources>
+        <DataTemplate x:Key="FileRow" x:DataType="local:BuildFileRow">
+            <Grid>
+                <TextBlock Text="{Binding Title}" IsVisible="{Binding IsFolder}" FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis" Margin="0,5" />
+                <Border Classes="mod-card" IsVisible="{Binding HasFile}" BorderBrush="{Binding Accent}"
+                        Background="#222D3D" BorderThickness="4,0,0,0" CornerRadius="8" Margin="0,0,0,7" Padding="10">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="10">
+                        <Border Width="{Binding IconSize}" Height="{Binding IconSize}" Background="#344259" CornerRadius="6"
+                                ClipToBounds="True" VerticalAlignment="Top">
+                            <Image Source="{Binding Icon.Image}" Stretch="UniformToFill" />
+                        </Border>
+                        <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding Description}" IsVisible="{Binding HasDescription}" Opacity="0.75"
+                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxLines="2" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="2" Text="{Binding Status}" VerticalAlignment="Center" Opacity="0.82" />
+                        <CheckBox Grid.Column="3" IsVisible="{Binding CanSelect}" IsChecked="{Binding Selected, Mode=OneWay}"
+                                  AutomationProperties.Name="Установить мод" Click="OptionalClicked" />
+                        <ItemsControl Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" ItemsSource="{Binding Dependencies}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="local:BuildFileRow">
+                                    <Border Background="#344259" CornerRadius="5" Padding="6,3" Margin="0,4,0,0">
+                                        <Grid ColumnDefinitions="18,*,Auto" ColumnSpacing="6">
+                                            <Image Source="{Binding Icon.Image}" Width="18" Height="18" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Status}" FontSize="12" Opacity="0.75" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Grid>
+                </Border>
+            </Grid>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Border x:Name="LoginPanel" Width="390" Padding="22" CornerRadius="12"
+                VerticalAlignment="Center" HorizontalAlignment="Center" Background="#1B2432">
+            <StackPanel Spacing="8">
+                <TextBlock Text="Адрес бэкенда" />
+                <TextBox x:Name="BackendAddress" PlaceholderText="https://launcher.example.org" />
+                <TextBlock Text="Логин" />
+                <TextBox x:Name="UserName" />
+                <TextBlock Text="Пароль" />
+                <TextBox x:Name="Password" PasswordChar="●" />
+                <Button Content="Войти" Classes="accent" IsDefault="True" Click="LoginClicked" Margin="0,4,0,0" />
+                <TextBlock x:Name="LoginStatus" TextWrapping="Wrap" />
+                <ProgressBar x:Name="LoginProgress" IsIndeterminate="True" IsVisible="False" Height="5" />
+            </StackPanel>
+        </Border>
+
+        <Grid x:Name="MainPanel" RowDefinitions="Auto,*,Auto" RowSpacing="14" IsVisible="False">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <ComboBox x:Name="Builds" HorizontalAlignment="Stretch" PlaceholderText="Выберите сборку"
+                          SelectionChanged="BuildSelectionChanged" />
+                <Button Grid.Column="1" Content="Выход" Click="LogoutClicked" />
+                <Button Grid.Column="2" Content="⚙" ToolTip.Tip="Настройки" Click="SettingsClicked" />
+            </Grid>
+
+            <Grid Grid.Row="1" ColumnDefinitions="230,*" ColumnSpacing="14">
+                <Border x:Name="ProfilePreviewPanel" Background="#1B2432" CornerRadius="12" ClipToBounds="True">
+                    <Grid RowDefinitions="Auto,*">
+                        <TextBlock x:Name="GameName" Margin="10,12,10,0" HorizontalAlignment="Center"
+                                   FontSize="20" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <local:SkinPreview x:Name="PlayerPreview" Grid.Row="1" />
+                    </Grid>
+                </Border>
+
+                <Border x:Name="ServerPanel" IsVisible="False" Padding="12" Background="#1B2432" CornerRadius="12">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Серверное ядро" FontWeight="SemiBold" />
+                        <Button Content="Выбрать JAR" Click="ChooseServerJar" />
+                        <TextBlock x:Name="ServerJarName" TextWrapping="Wrap" />
+                        <TextBlock Text="Java" FontWeight="SemiBold" Margin="0,8,0,0" />
+                        <WrapPanel>
+                            <Button Content="Выбрать Java" Click="ChooseServerJava" Margin="0,0,6,6" />
+                            <Button Content="Авто" Click="ResetServerJava" Margin="0,0,0,6" />
+                        </WrapPanel>
+                        <TextBlock x:Name="ServerJavaName" TextWrapping="Wrap" />
+                        <Button Content="Папка сервера" Click="OpenServerFolder" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1" Padding="12" Background="#1B2432" CornerRadius="12">
+                    <Grid RowDefinitions="Auto,*" RowSpacing="8">
+                        <StackPanel Orientation="Horizontal" Spacing="14">
+                            <ToggleSwitch x:Name="FullList" OffContent="Optional" OnContent="Full" MinWidth="95"
+                                          IsCheckedChanged="FileViewChanged" />
+                            <ToggleSwitch x:Name="TreeViewMode" OffContent="List" OnContent="Tree" MinWidth="78"
+                                          IsCheckedChanged="FileViewChanged" />
+                        </StackPanel>
+
+                        <Grid Grid.Row="1">
+                            <ScrollViewer x:Name="FlatFiles" HorizontalScrollBarVisibility="Disabled">
+                                <ItemsControl x:Name="FileList" ItemTemplate="{StaticResource FileRow}" />
+                            </ScrollViewer>
+                            <TreeView x:Name="FileTree" IsVisible="False" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <TreeView.ItemTemplate>
+                                    <TreeDataTemplate x:DataType="local:BuildFileRow" ItemsSource="{Binding Children}">
+                                        <ContentControl Content="{Binding}" ContentTemplate="{StaticResource FileRow}"
+                                                        HorizontalContentAlignment="Stretch" />
+                                    </TreeDataTemplate>
+                                </TreeView.ItemTemplate>
+                            </TreeView>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <Button x:Name="PlayButton" Content="Играть" Classes="accent" Click="PlayClicked" VerticalAlignment="Top" />
+                <StackPanel Grid.Column="1" Spacing="6" Margin="0,0,94,0">
+                    <TextBlock x:Name="Status" TextWrapping="Wrap" />
+                    <TextBlock x:Name="ProgressDetail" FontSize="12" Opacity="0.75" TextTrimming="CharacterEllipsis" IsVisible="False" />
+                    <ScrollViewer x:Name="DownloadList" MaxHeight="126" IsVisible="False"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <WrapPanel x:Name="DownloadCards" />
+                    </ScrollViewer>
+                    <ProgressBar x:Name="LoadProgress" Height="5" Minimum="0" Maximum="1" IsVisible="False" />
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <Button x:Name="CancelGameButton" Content="Отмена" IsVisible="False" Click="CancelGameClicked"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom" />
+
+        <Border x:Name="SettingsLayer" IsVisible="False" Background="#AA080C13" CornerRadius="12">
+            <Border Width="490" Padding="20" CornerRadius="12" Background="#1B2432"
+                    VerticalAlignment="Center" HorizontalAlignment="Center">
+                <StackPanel Spacing="12">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="RAM" />
+                        <TextBlock x:Name="RamValue" Grid.Column="1" />
+                    </Grid>
+                    <Slider x:Name="RamSlider" Minimum="0" SmallChange="256" LargeChange="1024" IsSnapToTickEnabled="True" TickFrequency="256" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="0 · Авто" FontSize="12" Opacity="0.75" />
+                        <TextBlock x:Name="RamMaximum" Grid.Column="1" FontSize="12" Opacity="0.75" />
+                    </Grid>
+                    <TextBlock Text="JVM-аргументы" />
+                    <TextBox x:Name="JvmArguments" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                        <TextBlock Text="Параллельные загрузки модов" VerticalAlignment="Center" />
+                        <ComboBox x:Name="ParallelDownloads" Grid.Column="1" MinWidth="70" />
+                    </Grid>
+                    <ToggleSwitch x:Name="DeveloperMode" Content="Режим разработчика" />
+                    <Button Content="Готово" HorizontalAlignment="Right" Click="SettingsDoneClicked" />
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
+</Window>
