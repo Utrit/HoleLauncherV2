@@ -11,7 +11,7 @@
                            TextTrimming="CharacterEllipsis" Margin="0,5" />
                 <Border Classes="mod-card" IsVisible="{Binding HasFile}" BorderBrush="{Binding Accent}"
                         Background="#222D3D" BorderThickness="4,0,0,0" CornerRadius="8" Margin="0,0,0,7" Padding="10">
-                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="10">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="10">
                         <Border Width="{Binding IconSize}" Height="{Binding IconSize}" Background="#344259" CornerRadius="6"
                                 ClipToBounds="True" VerticalAlignment="Top">
                             <Image Source="{Binding Icon.Image}" Stretch="UniformToFill" />
@@ -24,14 +24,19 @@
                         <TextBlock Grid.Column="2" Text="{Binding Status}" VerticalAlignment="Center" Opacity="0.82" />
                         <CheckBox Grid.Column="3" IsVisible="{Binding CanSelect}" IsChecked="{Binding Selected, Mode=OneWay}"
                                   AutomationProperties.Name="Установить мод" Click="OptionalClicked" />
-                        <ItemsControl Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" ItemsSource="{Binding Dependencies}">
+                        <Button Grid.Column="4" Content="{Binding ManagementMark}" Foreground="{Binding ManagementColor}"
+                                IsVisible="{Binding CanOverride}" ToolTip.Tip="{Binding ManagementHint}" Click="ModManagementClicked" />
+                        <ItemsControl Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4" ItemsSource="{Binding Dependencies}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="local:BuildFileRow">
                                     <Border Background="#344259" CornerRadius="5" Padding="6,3" Margin="0,4,0,0">
-                                        <Grid ColumnDefinitions="18,*,Auto" ColumnSpacing="6">
+                                        <Grid ColumnDefinitions="18,*,Auto,Auto" ColumnSpacing="6">
                                             <Image Source="{Binding Icon.Image}" Width="18" Height="18" />
                                             <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12" />
                                             <TextBlock Grid.Column="2" Text="{Binding Status}" FontSize="12" Opacity="0.75" />
+                                            <Button Grid.Column="3" Content="{Binding ManagementMark}" Foreground="{Binding ManagementColor}"
+                                                    IsVisible="{Binding CanOverride}" ToolTip.Tip="{Binding ManagementHint}"
+                                                    Padding="4,0" Click="ModManagementClicked" />
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
@@ -53,7 +58,10 @@
                 <TextBox x:Name="UserName" />
                 <TextBlock Text="Пароль" />
                 <TextBox x:Name="Password" PasswordChar="●" />
-                <Button Content="Войти" Classes="accent" IsDefault="True" Click="LoginClicked" Margin="0,4,0,0" />
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                    <Button Content="Войти" Classes="accent" IsDefault="True" Click="LoginClicked" />
+                    <Button Content="Зарегистрироваться" Click="RegisterClicked" />
+                </StackPanel>
                 <TextBlock x:Name="LoginStatus" TextWrapping="Wrap" />
                 <ProgressBar x:Name="LoginProgress" IsIndeterminate="True" IsVisible="False" Height="5" />
             </StackPanel>
@@ -119,7 +127,7 @@
 
             <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="12">
                 <Button x:Name="PlayButton" Content="Играть" Classes="accent" Click="PlayClicked" VerticalAlignment="Top" />
-                <StackPanel Grid.Column="1" Spacing="6" Margin="0,0,94,0">
+                <StackPanel Grid.Column="1" Spacing="6" Margin="0,0,130,0">
                     <TextBlock x:Name="Status" TextWrapping="Wrap" />
                     <TextBlock x:Name="ProgressDetail" FontSize="12" Opacity="0.75" TextTrimming="CharacterEllipsis" IsVisible="False" />
                     <ScrollViewer x:Name="DownloadList" MaxHeight="126" IsVisible="False"
@@ -131,6 +139,10 @@
             </Grid>
         </Grid>
 
+        <TextBlock x:Name="LauncherUpdateNotice" Text="Доступно обновление" IsVisible="False"
+                   IsHitTestVisible="False" HorizontalAlignment="Right" VerticalAlignment="Bottom" FontSize="11" Opacity="0.8" />
+        <Button x:Name="ServerConsoleButton" Content="Консоль" IsVisible="False" Click="ShowServerConsoleClicked"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,39" />
         <Button x:Name="CancelGameButton" Content="Отмена" IsVisible="False" Click="CancelGameClicked"
                 HorizontalAlignment="Right" VerticalAlignment="Bottom" />
 
@@ -154,6 +166,14 @@
                         <ComboBox x:Name="ParallelDownloads" Grid.Column="1" MinWidth="70" />
                     </Grid>
                     <ToggleSwitch x:Name="DeveloperMode" Content="Режим разработчика" />
+                    <StackPanel x:Name="TextureSettings" Spacing="8">
+                        <WrapPanel>
+                            <ComboBox x:Name="TextureModel" Width="100" Margin="0,0,8,4" AutomationProperties.Name="Модель скина" />
+                            <Button Content="Сменить скин" Click="ChangeSkinClicked" Margin="0,0,8,4" />
+                            <Button Content="Сменить плащ" Click="ChangeCapeClicked" Margin="0,0,0,4" />
+                        </WrapPanel>
+                    </StackPanel>
+                    <TextBlock x:Name="SettingsStatus" TextWrapping="Wrap" />
                     <Button Content="Готово" HorizontalAlignment="Right" Click="SettingsDoneClicked" />
                 </StackPanel>
             </Border>

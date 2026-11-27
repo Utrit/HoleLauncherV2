@@ -5,7 +5,8 @@ using System.Text.Json;
 namespace HoleLauncher;
 
 internal sealed class InstanceFiles(HttpClient http, BackendConnection backend, PublishedBuild build,
-    IReadOnlyList<PublishedBuild>? knownVersions = null, IReadOnlySet<string>? optionalMods = null, bool serverMode = false)
+    IReadOnlyList<PublishedBuild>? knownVersions = null, IReadOnlySet<string>? optionalMods = null, bool serverMode = false,
+    IReadOnlyDictionary<string, string[]>? unmanagedMods = null)
 {
     private const int Sha256HexLength = 64;
     private const int Sha512HexLength = 128;
@@ -16,7 +17,7 @@ internal sealed class InstanceFiles(HttpClient http, BackendConnection backend, 
     private const string PlayerDataImport = ".player-data-import";
     private static readonly string[] PlayerData = ["saves", "screenshots", "options.txt", "servers.dat", "hotbar.nbt"];
 
-    private sealed record ManagedFile(string Path, string Sha512);
+    private sealed record ManagedFile(string Path, string Sha512, string? Key = null);
     private sealed record InstallReceipt(ManagedFile[] Installed, ManagedFile[] Pending);
 
     public string Root { get; } = Path.Combine(AppContext.BaseDirectory,
@@ -117,8 +118,22 @@ internal sealed class InstanceFiles(HttpClient http, BackendConnection backend, 
         CancellationToken cancellation)
     {
         progress(new(stage, Detail: "Проверяем установленные файлы…"));
-        var files = new BuildSelection(build, optionalMods, serverMode).Installation();
-        var current = files.Select(file => new ManagedFile(file.Path, file.Sha512)).ToArray();
+        var protectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (unmanagedMods is not null)
+        {
+            protectedPaths.UnionWith(unmanagedMods.Values.SelectMany(paths => paths));
+            protectedPaths.UnionWith(AvailableVersions().Append(build).SelectMany(release => release.Files)
+                .Where(file => unmanagedMods.ContainsKey(BuildSelection.Key(file))).Select(file => file.Path));
+        }
+
+        var installed = await ReadInstalledFilesAsync(cancellation);
+        var protectedFiles = installed.Values.Where(file => protectedPaths.Contains(file.Path) ||
+            file.Key is { } key && unmanagedMods?.ContainsKey(key) == true).ToArray();
+        protectedPaths.UnionWith(protectedFiles.Select(file => file.Path));
+
+        var files = new BuildSelection(build, optionalMods, serverMode).Installation()
+            .Where(file => !protectedPaths.Contains(file.Path)).ToArray();
+        var current = files.Select(file => new ManagedFile(file.Path, file.Sha512, BuildSelection.Key(file))).ToArray();
         var destinations = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in current)
         {
@@ -128,10 +143,9 @@ internal sealed class InstanceFiles(HttpClient http, BackendConnection backend, 
         foreach (var folder in build.Build.Folders)
             ResolvePath(folder);
 
-        var installed = await ReadInstalledFilesAsync(cancellation);
         await SaveReceiptAsync(new([.. installed.Values], current), cancellation);
         var currentPaths = current.Select(file => file.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var obsolete = installed.Keys.Where(path => !currentPaths.Contains(path)).ToArray();
+        var obsolete = installed.Keys.Where(path => !currentPaths.Contains(path) && !protectedPaths.Contains(path)).ToArray();
 
         // Remove paths that would block creation of a file or directory in the new manifest.
         var requiredDirectories = RequiredDirectories(files);
@@ -190,7 +204,7 @@ internal sealed class InstanceFiles(HttpClient http, BackendConnection backend, 
 
         RemoveObsoleteFiles(obsolete.Except(blocking, StringComparer.OrdinalIgnoreCase)
             .Except(changedFolders, StringComparer.OrdinalIgnoreCase), cancellation);
-        await SaveReceiptAsync(new(current, []), cancellation);
+        await SaveReceiptAsync(new([.. current, .. protectedFiles], []), cancellation);
     }
 
     private HashSet<string> RequiredDirectories(IEnumerable<BuildFile> files) =>
@@ -237,7 +251,7 @@ internal sealed class InstanceFiles(HttpClient http, BackendConnection backend, 
             foreach (var file in legacy.Files.Where(IsManagedByLauncher))
             {
                 if (await GetStateAsync(file, cancellation) == LocalFileState.Current)
-                    installed[file.Path] = new(file.Path, file.Sha512);
+                    installed[file.Path] = new(file.Path, file.Sha512, BuildSelection.Key(file));
             }
             return installed;
         }

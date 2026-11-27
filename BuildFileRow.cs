@@ -15,26 +15,32 @@ internal sealed record BuildFileRow(string Title, IReadOnlyList<BuildFileRow> Ch
     public bool CanSelect { get; init; }
     public bool Selected { get; set; }
     public string? SelectionKey { get; init; }
+    public bool CanOverride { get; init; }
+    public bool Unmanaged { get; init; }
+    public string ManagementMark => Unmanaged ? "✕" : "✓";
+    public IBrush ManagementColor => Unmanaged ? StrongAccent : OptionalAccent;
+    public string ManagementHint => Unmanaged ? "Вернуть управление лаунчеру" : "Отключить управление лаунчером";
     public BuildFileRow[] Dependencies { get; init; } = [];
     public bool HasDescription => !Compact && !string.IsNullOrWhiteSpace(Description);
     public int IconSize => Compact ? 22 : 40;
 
+    private static string StatusText(LocalFileState state) => state switch
+    {
+        LocalFileState.Current => "Актуален",
+        LocalFileState.Outdated => "Нужно обновить",
+        LocalFileState.Unavailable => "Не удалось проверить",
+        LocalFileState.Missing => "Не установлен",
+        _ => "Проверяем…"
+    };
+
     public static BuildFileRow Leaf(BuildFile file, LocalFileState state, ModIcon? icon)
     {
-        var status = state switch
-        {
-            LocalFileState.Current => "Актуален",
-            LocalFileState.Outdated => "Нужно обновить",
-            LocalFileState.Unavailable => "Не удалось проверить",
-            LocalFileState.Missing => "Не установлен",
-            _ => "Проверяем…"
-        };
         var accent = file.Type switch
         {
             "Strong" => StrongAccent,
             "Soft" => SoftAccent,
             _ => OptionalAccent
         };
-        return new(file.DisplayName, [], status, file.Card?.Description, accent, icon);
+        return new(file.DisplayName, [], StatusText(state), file.Card?.Description, accent, icon);
     }
 }

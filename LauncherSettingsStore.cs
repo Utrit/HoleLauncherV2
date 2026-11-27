@@ -9,7 +9,7 @@ internal sealed record LauncherSettings(
     string UserName = "",
     string? ProtectedPassword = null,
     bool DeveloperMode = false, GamePreferences? Preferences = null, Dictionary<Guid, string[]>? OptionalMods = null,
-    string? ServerJar = null, string? ServerJava = null)
+    string? ServerJar = null, string? ServerJava = null, Dictionary<Guid, Dictionary<string, string[]>>? UnmanagedMods = null)
 {
     public string ReadPassword() =>
         OperatingSystem.IsWindows() && ProtectedPassword is not null

@@ -42,6 +42,8 @@ public sealed partial class MainWindow : Window
         this.publicHttp = publicHttp;
         this.serverMode = serverMode;
         InitializeComponent();
+        TextureSettings.IsVisible = !serverMode;
+        TextureModel.ItemsSource = new[] { "Classic", "Slim" };
         if (serverMode)
         {
             Title = "HoleLauncher · Сервер";
@@ -95,6 +97,7 @@ public sealed partial class MainWindow : Window
 
         ShowServerPaths();
         BackendAddress.Text = settings.BackendAddress;
+        _ = RefreshLauncherUpdateAsync();
         UserName.Text = settings.UserName;
         if (settings.ProtectedPassword is null || !OperatingSystem.IsWindows())
             return;
@@ -159,6 +162,9 @@ public sealed partial class MainWindow : Window
         {
             while (await timer.WaitForNextTickAsync(lifetime.Token))
             {
+                if (busy)
+                    continue;
+                await RefreshLauncherUpdateAsync();
                 if (connection is { } backend && !busy)
                     await RefreshAsync(backend, lifetime.Token);
             }
@@ -293,6 +299,7 @@ public sealed partial class MainWindow : Window
         prepareGame = preparation;
         CancelGameButton.Content = "Отмена";
         CancelGameButton.IsVisible = CancelGameButton.IsEnabled = true;
+        LauncherUpdateNotice.IsVisible = false;
         var showGameProgress = true;
         var progress = new Progress<LauncherProgress>(update =>
         {
@@ -301,15 +308,25 @@ public sealed partial class MainWindow : Window
             serverRunning = serverMode && !update.ShowBar;
             CancelGameButton.IsVisible = update.ShowBar || serverRunning;
             CancelGameButton.Content = serverRunning ? "Остановить" : "Отмена";
+            LauncherUpdateNotice.IsVisible = updateAvailable && !CancelGameButton.IsVisible;
             ShowProgress(update);
         });
         try
         {
             var preferences = settings.Preferences ?? new();
             var optional = OptionalFor(build);
+            var unmanaged = UnmanagedFor(build);
+            if (!serverMode)
+            {
+                ShowProgress(new("Проверяем игровую сессию…"));
+                gameSession = await backend.EnsureGameSessionAsync(gameSession, settings.UserName, Password.Text ?? "", preparation.Token);
+                session = gameSession;
+                GameName.Text = gameSession.SelectedProfile.Name;
+            }
             var code = serverMode
-                ? await launcher.RunServerAsync(backend, build, jar!, settings.ServerJava, preferences, progress, preparation.Token, optional)
-                : await launcher.PlayAsync(backend, build, gameSession, preferences, progress, preparation.Token, catalog, optional);
+                ? await launcher.RunServerAsync(backend, build, jar!, settings.ServerJava, preferences, progress,
+                    preparation.Token, optional, catalog, unmanaged, CreateServerConsole())
+                : await launcher.PlayAsync(backend, build, gameSession, preferences, progress, preparation.Token, catalog, optional, unmanaged);
             ShowStatus(serverMode
                 ? code == 0 ? "Сервер остановлен." : $"Сервер завершился с кодом {code}. Проверьте консоль сервера."
                 : code == 0 ? "Игра завершена." : $"Minecraft завершился с кодом {code}.");
@@ -324,6 +341,7 @@ public sealed partial class MainWindow : Window
             prepareGame = null;
             serverRunning = false;
             CancelGameButton.IsVisible = false;
+            LauncherUpdateNotice.IsVisible = updateAvailable;
             SetDownloads([]);
             if (closeAfterServer)
                 Close();
@@ -388,7 +406,9 @@ public sealed partial class MainWindow : Window
         {
             var instance = new InstanceFiles(publicHttp, backend, build, catalog, serverMode: serverMode);
             var states = new Dictionary<BuildFile, LocalFileState>();
-            foreach (var file in build.Files.Where(file => BuildSelection.IsForSide(file, serverMode)))
+            var unmanaged = UnmanagedFor(build);
+            foreach (var file in build.Files.Where(file => BuildSelection.IsForSide(file, serverMode) &&
+                unmanaged?.ContainsKey(BuildSelection.Key(file)) != true))
             {
                 check.Token.ThrowIfCancellationRequested();
                 try { states[file] = await instance.GetStateAsync(file, check.Token); }
@@ -428,6 +448,7 @@ public sealed partial class MainWindow : Window
         var build = Builds.SelectedItem as PublishedBuild;
         var selected = build is null ? new HashSet<string>() : OptionalFor(build);
         var graph = build is null ? null : new BuildSelection(build, selected, serverMode);
+        var unmanaged = build is null ? null : UnmanagedFor(build);
         var files = (graph?.Roots() ?? [])
             .Where(file => full || file.IsOptional)
             .OrderBy(file => file.Path, StringComparer.OrdinalIgnoreCase)
@@ -437,10 +458,15 @@ public sealed partial class MainWindow : Window
         BuildFileRow CreateRow(BuildFile file, bool compact, bool selectable)
         {
             var key = BuildSelection.Key(file);
-            return BuildFileRow.Leaf(file, fileStates.GetValueOrDefault(file), modIcons?.Get(file.Card?.IconUrl)) with
+            var excluded = unmanaged?.ContainsKey(key) == true;
+            var row = BuildFileRow.Leaf(file, fileStates.GetValueOrDefault(file), modIcons?.Get(file.Card?.IconUrl));
+            return row with
             {
+                CanOverride = settings.DeveloperMode,
+                Unmanaged = excluded,
+                Status = excluded ? "Ручное управление" : row.Status,
                 Compact = compact,
-                CanSelect = selectable && file.IsOptional,
+                CanSelect = selectable && file.IsOptional && !excluded,
                 Selected = selected.Contains(key),
                 SelectionKey = key,
                 Dependencies = selectable ? graph!.Dependencies(file).Select(dep => CreateRow(dep, true, false)).ToArray() : []
@@ -553,6 +579,8 @@ public sealed partial class MainWindow : Window
         JvmArguments.Text = preferences.JvmArguments;
         ParallelDownloads.SelectedItem = preferences.EffectiveParallelDownloads;
         DeveloperMode.IsChecked = settings.DeveloperMode;
+        TextureModel.SelectedIndex = previewProfile?.SkinModel == "slim" ? 1 : 0;
+        SettingsStatus.Text = null;
         ShowRamValue();
         MainPanel.IsEnabled = false;
         SettingsLayer.IsVisible = true;
@@ -626,7 +654,9 @@ public sealed partial class MainWindow : Window
 
     private void ShowStatus(string text)
     {
-        if (LoginPanel.IsVisible)
+        if (SettingsLayer.IsVisible)
+            SettingsStatus.Text = text;
+        else if (LoginPanel.IsVisible)
             LoginStatus.Text = text;
         else
             Status.Text = text;

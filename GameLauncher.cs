@@ -17,9 +17,10 @@ internal sealed class GameLauncher(HttpClient http)
     private const string InjectorSha256 = "9c7f4343e6c82034958ffb48c14a2cb0c85928be7283103ce17da00c6d5a7b10";
 
     public async Task<int> PlayAsync(BackendConnection backend, PublishedBuild build, DraslSession session, GamePreferences preferences,
-        IProgress<LauncherProgress> progress, CancellationToken cancellation, IReadOnlyList<PublishedBuild>? knownVersions = null, IReadOnlySet<string>? optionalMods = null)
+        IProgress<LauncherProgress> progress, CancellationToken cancellation, IReadOnlyList<PublishedBuild>? knownVersions = null, IReadOnlySet<string>? optionalMods = null,
+        IReadOnlyDictionary<string, string[]>? unmanagedMods = null)
     {
-        var instance = new InstanceFiles(http, backend, build, knownVersions, optionalMods);
+        var instance = new InstanceFiles(http, backend, build, knownVersions, optionalMods, unmanagedMods: unmanagedMods);
         using var installLease = instance.PrepareForLaunch();
         var minecraft = new MinecraftLauncher(MinecraftLauncherParameters.CreateDefault(new MinecraftPath(instance.Root), http));
 
@@ -70,12 +71,13 @@ internal sealed class GameLauncher(HttpClient http)
 
     public async Task<int> RunServerAsync(BackendConnection backend, PublishedBuild build, string jar, string? javaPath,
         GamePreferences preferences, IProgress<LauncherProgress> progress, CancellationToken cancellation,
-        IReadOnlySet<string> optionalMods)
+        IReadOnlySet<string> optionalMods, IReadOnlyList<PublishedBuild> knownVersions,
+        IReadOnlyDictionary<string, string[]>? unmanagedMods, ServerConsole console)
     {
         if (!File.Exists(jar) || !Path.GetExtension(jar).Equals(".jar", StringComparison.OrdinalIgnoreCase))
             throw new LauncherException("Выберите исполняемый JAR серверного ядра.");
 
-        var instance = new InstanceFiles(http, backend, build, optionalMods: optionalMods, serverMode: true);
+        var instance = new InstanceFiles(http, backend, build, knownVersions, optionalMods, serverMode: true, unmanagedMods: unmanagedMods);
         var java = ResolveJava(javaPath, build.BuildId);
         using var lease = instance.PrepareForLaunch();
         await instance.SyncAsync("1/3 · Файлы сервера", progress.Report, preferences.EffectiveParallelDownloads, cancellation);
@@ -88,7 +90,10 @@ internal sealed class GameLauncher(HttpClient http)
             FileName = java,
             WorkingDirectory = instance.Root,
             UseShellExecute = false,
-            RedirectStandardInput = true
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
         };
         var ram = preferences.EffectiveRamMiB;
         startInfo.ArgumentList.Add($"-Xms{Math.Min(ram, 512)}M");
@@ -105,6 +110,9 @@ internal sealed class GameLauncher(HttpClient http)
         cancellation.ThrowIfCancellationRequested();
         using var server = StartServer(startInfo);
         InstanceFiles.RecordGame(lease, server);
+        console.Attach(server);
+        server.BeginOutputReadLine();
+        server.BeginErrorReadLine();
         progress.Report(new("Процесс сервера запущен.", ShowBar: false));
         try
         {
@@ -114,10 +122,14 @@ internal sealed class GameLauncher(HttpClient http)
         {
             if (!server.HasExited)
             {
-                try { await server.StandardInput.WriteLineAsync("stop"); }
+                try { await console.SendAsync("stop"); }
                 catch (IOException) when (server.HasExited) { }
             }
             await server.WaitForExitAsync();
+        }
+        finally
+        {
+            console.Detach();
         }
 
         lease.SetLength(0);

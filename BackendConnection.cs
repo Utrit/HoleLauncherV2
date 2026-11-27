@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Http.Headers;
 
 namespace HoleLauncher;
 
@@ -23,8 +24,109 @@ internal sealed class BackendConnection(Uri address) : IDisposable
         return uri;
     }
 
+    public async Task<bool> IsLauncherUpdateAvailableAsync(CancellationToken cancellation)
+    {
+        if ((!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()) ||
+            EmbeddedBackend.ReadFingerprint() is not { } localFingerprint)
+            return false;
+
+        var path = OperatingSystem.IsLinux() ? "/launcherlinux/sha512" : "/launcher/sha512";
+        using var response = await Http.GetAsync(path, HttpCompletionOption.ResponseHeadersRead, cancellation);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return false;
+
+        response.EnsureSuccessStatusCode();
+        return response.Headers.TryGetValues("X-Launcher-Build-Sha512", out var values) &&
+            values.FirstOrDefault() is { Length: 128 } remoteFingerprint &&
+            remoteFingerprint.All(Uri.IsHexDigit) &&
+            !string.Equals(localFingerprint, remoteFingerprint, StringComparison.OrdinalIgnoreCase);
+    }
+
     public async Task<PublishedBuild[]> GetBuildsAsync(CancellationToken cancellation) =>
         await Http.GetFromJsonAsync<PublishedBuild[]>("/api/auth/repository/published", cancellation) ?? [];
+
+    public async Task<bool> RegisterAsync(string userName, string password, CancellationToken cancellation)
+    {
+        using var response = await Http.PostAsJsonAsync("/api/auth/register", new { UserName = userName, Password = password }, cancellation);
+        return response.StatusCode switch
+        {
+            HttpStatusCode.Created => true,
+            HttpStatusCode.Accepted => false,
+            HttpStatusCode.BadRequest => throw new LauncherException("Некорректный логин или пароль."),
+            HttpStatusCode.Conflict => throw new LauncherException("Имя пользователя уже занято."),
+            HttpStatusCode.TooManyRequests => throw new LauncherException("Слишком много запросов. Попробуйте позже."),
+            _ => throw new LauncherException("Сервер не смог завершить регистрацию.")
+        };
+    }
+
+    public async Task<DraslSession> EnsureGameSessionAsync(DraslSession session, string userName, string password,
+        CancellationToken cancellation)
+    {
+        using var account = await Http.GetAsync("/api/auth/me", cancellation);
+        if (account.StatusCode == HttpStatusCode.Unauthorized)
+            return await LoginAsync(userName, password, cancellation);
+        account.EnsureSuccessStatusCode();
+
+        using var validation = await Http.PostAsJsonAsync("/drasl/auth/validate",
+            new { session.AccessToken, session.ClientToken }, cancellation);
+        if (validation.IsSuccessStatusCode)
+            return session;
+        if (validation.StatusCode is not (HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized or HttpStatusCode.BadRequest))
+            validation.EnsureSuccessStatusCode();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/game-session");
+        request.Headers.Add("X-HoleLauncher-Request", "1");
+        using var renewal = await Http.SendAsync(request, cancellation);
+        if (renewal.StatusCode == HttpStatusCode.Unauthorized)
+            return await LoginAsync(userName, password, cancellation);
+        renewal.EnsureSuccessStatusCode();
+        return await renewal.Content.ReadFromJsonAsync<DraslSession>(cancellation)
+            ?? throw new LauncherException("Бэкенд не выдал игровую сессию Drasl.");
+    }
+
+    public async Task SetTextureAsync(bool skin, string model, string name, Stream source, CancellationToken cancellation)
+    {
+        var path = "/api/auth/game-profile/" + (skin ? "skin" : "cape");
+        using var content = new StreamContent(source);
+        content.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        content.Headers.TryAddWithoutValidation("X-Storage-File-Name", Uri.EscapeDataString(name));
+        using var upload = await Http.PostAsync(path, content, cancellation);
+        if (upload.StatusCode == HttpStatusCode.BadRequest)
+            throw new LauncherException("Выберите подходящую PNG-текстуру.");
+        upload.EnsureSuccessStatusCode();
+        var stored = await upload.Content.ReadFromJsonAsync<TextureUpload>(cancellation)
+            ?? throw new LauncherException("Сервер не подтвердил загрузку текстуры.");
+        await WaitForOperationAsync(stored.OperationId, cancellation);
+        using var change = await Http.PutAsJsonAsync(path, new { stored.FileId, SkinModel = skin ? model : null }, cancellation);
+        if (change.StatusCode == HttpStatusCode.BadRequest)
+            throw new LauncherException("Текстура не подходит для выбранной модели.");
+        change.EnsureSuccessStatusCode();
+        if (change.StatusCode == HttpStatusCode.Accepted)
+        {
+            var operation = await change.Content.ReadFromJsonAsync<OperationAccepted>(cancellation)
+                ?? throw new LauncherException("Сервер не подтвердил изменение текстуры.");
+            await WaitForOperationAsync(operation.OperationId, cancellation);
+        }
+    }
+
+    private async Task WaitForOperationAsync(Guid id, CancellationToken cancellation)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        deadline.CancelAfter(TimeSpan.FromSeconds(45));
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
+        do
+        {
+            var operation = await Http.GetFromJsonAsync<TextureOperation>($"/api/auth/operations/{id:D}", deadline.Token);
+            if (operation?.State == "Done")
+                return;
+            if (operation?.State == "Failed")
+                throw new LauncherException("Сервер не смог сохранить текстуру.");
+        } while (await timer.WaitForNextTickAsync(deadline.Token));
+    }
+
+    private sealed record TextureUpload(Guid OperationId, Guid FileId);
+    private sealed record OperationAccepted(Guid OperationId);
+    private sealed record TextureOperation(string State);
 
     public async Task<DraslSession> LoginAsync(string userName, string password, CancellationToken cancellation)
     {
