@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="using:HoleLauncher" x:Class="HoleLauncher.MainWindow"
-        Title="HoleLauncher" RequestedThemeVariant="Dark"
+        Title="HoleLauncher" Icon="/Assets/launcher.ico" RequestedThemeVariant="Dark"
         FontFamily="{StaticResource SnProMedium}" Background="#11161F"
         Width="890" Height="570" MinWidth="720" MinHeight="465">
     <Window.Resources>
@@ -109,9 +109,18 @@
                         </StackPanel>
 
                         <Grid Grid.Row="1">
-                            <ScrollViewer x:Name="FlatFiles" HorizontalScrollBarVisibility="Disabled">
-                                <ItemsControl x:Name="FileList" ItemTemplate="{StaticResource FileRow}" />
-                            </ScrollViewer>
+                            <ListBox x:Name="FileList" ItemTemplate="{StaticResource FileRow}" Background="Transparent"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemsPanel>
+                                    <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+                                </ListBox.ItemsPanel>
+                                <ListBox.Styles>
+                                    <Style Selector="ListBoxItem">
+                                        <Setter Property="Padding" Value="0" />
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    </Style>
+                                </ListBox.Styles>
+                            </ListBox>
                             <TreeView x:Name="FileTree" IsVisible="False" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                                 <TreeView.ItemTemplate>
                                     <TreeDataTemplate x:DataType="local:BuildFileRow" ItemsSource="{Binding Children}">

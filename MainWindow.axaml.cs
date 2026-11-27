@@ -440,7 +440,7 @@ public sealed partial class MainWindow : Window
 
     private void ShowFiles()
     {
-        if (FlatFiles is null || FileTree is null || Builds is null)
+        if (FileList is null || FileTree is null || Builds is null)
             return;
 
         var tree = TreeViewMode.IsChecked == true;
@@ -473,7 +473,7 @@ public sealed partial class MainWindow : Window
             };
         }
 
-        FlatFiles.IsVisible = !tree && files.Length > 0;
+        FileList.IsVisible = !tree && files.Length > 0;
         FileTree.IsVisible = tree && files.Length > 0;
         FileTree.ItemsSource = tree ? GroupFiles(files) : null;
         FileList.ItemsSource = tree ? null : files.Select(item => item.Row).ToArray();
