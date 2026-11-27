@@ -36,6 +36,46 @@ public sealed partial class MainWindow
             ShowStatus("Аккаунт ещё готовится. Войдите через несколько секунд.");
     });
 
+    private bool restoringTextureModel;
+
+    private async void SkinModelChanged(object? sender, RoutedEventArgs e)
+    {
+        if (restoringTextureModel || SettingsLayer?.IsVisible != true || busy ||
+            connection is not { } backend || session is not { } current ||
+            previewProfile is not { SkinFileId: { } id } profile)
+            return;
+
+        var model = TextureModel.IsChecked == true ? "slim" : "classic";
+        if (model == profile.SkinModel)
+            return;
+
+        await RunAsync(async cancellation =>
+        {
+            TextureSettings.IsEnabled = false;
+            SettingsStatus.Text = "Сохраняем модель скина…";
+            var saved = false;
+            try
+            {
+                session = await backend.EnsureGameSessionAsync(current, settings.UserName, Password.Text ?? "", cancellation);
+                await backend.SetSkinModelAsync(id, model, cancellation);
+                saved = true;
+                PlayerPreview.SetModel(model);
+                previewProfile = profile with { SkinModel = model };
+                SettingsStatus.Text = "Модель скина сохранена.";
+            }
+            finally
+            {
+                TextureSettings.IsEnabled = true;
+                if (!saved)
+                {
+                    restoringTextureModel = true;
+                    TextureModel.IsChecked = profile.SkinModel == "slim";
+                    restoringTextureModel = false;
+                }
+            }
+        });
+    }
+
     private async void ChangeSkinClicked(object? sender, RoutedEventArgs e) => await PickTextureAsync(skin: true);
 
     private async void ChangeCapeClicked(object? sender, RoutedEventArgs e) => await PickTextureAsync(skin: false);
@@ -56,7 +96,7 @@ public sealed partial class MainWindow
         await using var input = await file.OpenReadAsync();
         SettingsStatus.Text = "Загружаем текстуру…";
         session = await backend.EnsureGameSessionAsync(current, settings.UserName, Password.Text ?? "", cancellation);
-        await backend.SetTextureAsync(skin, TextureModel.SelectedIndex == 1 ? "slim" : "classic", file.Name, input, cancellation);
+        await backend.SetTextureAsync(skin, TextureModel.IsChecked == true ? "slim" : "classic", file.Name, input, cancellation);
         await RefreshProfileAsync(backend, cancellation);
         SettingsStatus.Text = skin ? "Скин сохранён." : "Плащ сохранён.";
     });

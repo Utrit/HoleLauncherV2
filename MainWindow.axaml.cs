@@ -2,6 +2,8 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Platform;
 using Avalonia.Data;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -43,10 +45,12 @@ public sealed partial class MainWindow : Window
         this.serverMode = serverMode;
         InitializeComponent();
         TextureSettings.IsVisible = !serverMode;
-        TextureModel.ItemsSource = new[] { "Classic", "Slim" };
+        AddHandler(KeyDownEvent, FocusModSearch, RoutingStrategies.Tunnel);
         if (serverMode)
         {
             Title = "HoleLauncher · Сервер";
+            using var serverIcon = AssetLoader.Open(new Uri("avares://HoleLauncher/Assets/launcher-server.ico"));
+            Icon = new WindowIcon(serverIcon);
             ProfilePreviewPanel.IsVisible = false;
             ServerPanel.IsVisible = true;
             PlayButton.Content = "Запустить сервер";
@@ -272,6 +276,7 @@ public sealed partial class MainWindow : Window
         modIcons = null;
         MainPanel.IsVisible = false;
         LoginPanel.IsVisible = true;
+        ModSearch.Clear();
         Password.Clear();
         PlayerPreview.SetModel("classic");
         PlayerPreview.SetSkin(null);
@@ -438,6 +443,27 @@ public sealed partial class MainWindow : Window
 
     private void FileViewChanged(object? sender, RoutedEventArgs e) => ShowFiles();
 
+    private void ModSearchChanged(object? sender, TextChangedEventArgs e) => ShowFiles();
+
+    private void FocusModSearch(object? sender, KeyEventArgs e)
+    {
+        if (!MainPanel.IsVisible || !MainPanel.IsEnabled ||
+            e.Key != Key.F || e.KeyModifiers is not (KeyModifiers.Control or KeyModifiers.Meta))
+            return;
+
+        ModSearch.Focus();
+        ModSearch.SelectAll();
+        e.Handled = true;
+    }
+
+    private void ModSearchKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape)
+            return;
+        ModSearch.Clear();
+        e.Handled = true;
+    }
+
     private void ShowFiles()
     {
         if (FileList is null || FileTree is null || Builds is null)
@@ -449,11 +475,18 @@ public sealed partial class MainWindow : Window
         var selected = build is null ? new HashSet<string>() : OptionalFor(build);
         var graph = build is null ? null : new BuildSelection(build, selected, serverMode);
         var unmanaged = build is null ? null : UnmanagedFor(build);
+        var query = ModSearch?.Text?.Trim();
         var files = (graph?.Roots() ?? [])
             .Where(file => full || file.IsOptional)
+            .Where(file => MatchesSearch(file) || graph!.Dependencies(file).Any(MatchesSearch))
             .OrderBy(file => file.Path, StringComparer.OrdinalIgnoreCase)
             .Select(file => (file.Path, Row: CreateRow(file, tree, selectable: true)))
             .ToArray();
+
+        bool MatchesSearch(BuildFile file) => string.IsNullOrEmpty(query) ||
+            file.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            file.Path.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            file.Card?.Description?.Contains(query, StringComparison.OrdinalIgnoreCase) == true;
 
         BuildFileRow CreateRow(BuildFile file, bool compact, bool selectable)
         {
@@ -579,7 +612,7 @@ public sealed partial class MainWindow : Window
         JvmArguments.Text = preferences.JvmArguments;
         ParallelDownloads.SelectedItem = preferences.EffectiveParallelDownloads;
         DeveloperMode.IsChecked = settings.DeveloperMode;
-        TextureModel.SelectedIndex = previewProfile?.SkinModel == "slim" ? 1 : 0;
+        TextureModel.IsChecked = previewProfile?.SkinModel == "slim";
         SettingsStatus.Text = null;
         ShowRamValue();
         MainPanel.IsEnabled = false;

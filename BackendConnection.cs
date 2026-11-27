@@ -97,7 +97,15 @@ internal sealed class BackendConnection(Uri address) : IDisposable
         var stored = await upload.Content.ReadFromJsonAsync<TextureUpload>(cancellation)
             ?? throw new LauncherException("Сервер не подтвердил загрузку текстуры.");
         await WaitForOperationAsync(stored.OperationId, cancellation);
-        using var change = await Http.PutAsJsonAsync(path, new { stored.FileId, SkinModel = skin ? model : null }, cancellation);
+        await ApplyTextureAsync(path, stored.FileId, skin ? model : null, cancellation);
+    }
+
+    public Task SetSkinModelAsync(Guid fileId, string model, CancellationToken cancellation) =>
+        ApplyTextureAsync("/api/auth/game-profile/skin", fileId, model, cancellation);
+
+    private async Task ApplyTextureAsync(string path, Guid fileId, string? model, CancellationToken cancellation)
+    {
+        using var change = await Http.PutAsJsonAsync(path, new { FileId = fileId, SkinModel = model }, cancellation);
         if (change.StatusCode == HttpStatusCode.BadRequest)
             throw new LauncherException("Текстура не подходит для выбранной модели.");
         change.EnsureSuccessStatusCode();

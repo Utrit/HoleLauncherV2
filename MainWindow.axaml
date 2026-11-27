@@ -100,7 +100,7 @@
                 </Border>
 
                 <Border Grid.Column="1" Padding="12" Background="#1B2432" CornerRadius="12">
-                    <Grid RowDefinitions="Auto,*" RowSpacing="8">
+                    <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
                         <StackPanel Orientation="Horizontal" Spacing="14">
                             <ToggleSwitch x:Name="FullList" OffContent="Optional" OnContent="Full" MinWidth="95"
                                           IsCheckedChanged="FileViewChanged" />
@@ -108,7 +108,9 @@
                                           IsCheckedChanged="FileViewChanged" />
                         </StackPanel>
 
-                        <Grid Grid.Row="1">
+                        <TextBox x:Name="ModSearch" Grid.Row="1" PlaceholderText="Поиск модов (Ctrl+F)"
+                                 TextChanged="ModSearchChanged" KeyDown="ModSearchKeyDown" />
+                        <Grid Grid.Row="2">
                             <ListBox x:Name="FileList" ItemTemplate="{StaticResource FileRow}" Background="Transparent"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                                 <ListBox.ItemsPanel>
@@ -177,7 +179,9 @@
                     <ToggleSwitch x:Name="DeveloperMode" Content="Режим разработчика" />
                     <StackPanel x:Name="TextureSettings" Spacing="8">
                         <WrapPanel>
-                            <ComboBox x:Name="TextureModel" Width="100" Margin="0,0,8,4" AutomationProperties.Name="Модель скина" />
+                            <ToggleSwitch x:Name="TextureModel" OffContent="Classic" OnContent="Slim"
+                                          MinWidth="100" Margin="0,0,8,4" AutomationProperties.Name="Модель скина"
+                                          IsCheckedChanged="SkinModelChanged" />
                             <Button Content="Сменить скин" Click="ChangeSkinClicked" Margin="0,0,8,4" />
                             <Button Content="Сменить плащ" Click="ChangeCapeClicked" Margin="0,0,0,4" />
                         </WrapPanel>
