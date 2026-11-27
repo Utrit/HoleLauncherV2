@@ -11,6 +11,13 @@ internal sealed record BuildFileRow(string Title, IReadOnlyList<BuildFileRow> Ch
 
     public bool HasFile => Status is not null;
     public bool IsFolder => !HasFile;
+    private static readonly IBrush MatchBackground = Brush.Parse("#7A621D");
+    private static readonly IBrush DefaultCardBackground = Brush.Parse("#222D3D");
+    private static readonly IBrush DefaultDependencyBackground = Brush.Parse("#344259");
+
+    public bool SearchMatch { get; init; }
+    public IBrush CardBackground => SearchMatch ? MatchBackground : DefaultCardBackground;
+    public IBrush DependencyBackground => SearchMatch ? MatchBackground : DefaultDependencyBackground;
     public bool Compact { get; init; }
     public bool CanSelect { get; init; }
     public bool Selected { get; set; }

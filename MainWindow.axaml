@@ -10,7 +10,7 @@
                 <TextBlock Text="{Binding Title}" IsVisible="{Binding IsFolder}" FontWeight="SemiBold"
                            TextTrimming="CharacterEllipsis" Margin="0,5" />
                 <Border Classes="mod-card" IsVisible="{Binding HasFile}" BorderBrush="{Binding Accent}"
-                        Background="#222D3D" BorderThickness="4,0,0,0" CornerRadius="8" Margin="0,0,0,7" Padding="10">
+                        Background="{Binding CardBackground}" BorderThickness="4,0,0,0" CornerRadius="8" Margin="0,0,0,7" Padding="10">
                     <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="10">
                         <Border Width="{Binding IconSize}" Height="{Binding IconSize}" Background="#344259" CornerRadius="6"
                                 ClipToBounds="True" VerticalAlignment="Top">
@@ -29,7 +29,7 @@
                         <ItemsControl Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4" ItemsSource="{Binding Dependencies}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="local:BuildFileRow">
-                                    <Border Background="#344259" CornerRadius="5" Padding="6,3" Margin="0,4,0,0">
+                                    <Border Background="{Binding DependencyBackground}" CornerRadius="5" Padding="6,3" Margin="0,4,0,0">
                                         <Grid ColumnDefinitions="18,*,Auto,Auto" ColumnSpacing="6">
                                             <Image Source="{Binding Icon.Image}" Width="18" Height="18" />
                                             <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12" />
@@ -108,8 +108,17 @@
                                           IsCheckedChanged="FileViewChanged" />
                         </StackPanel>
 
-                        <TextBox x:Name="ModSearch" Grid.Row="1" PlaceholderText="Поиск модов (Ctrl+F)"
-                                 TextChanged="ModSearchChanged" KeyDown="ModSearchKeyDown" />
+                        <Grid x:Name="ModSearchBar" Grid.Row="1" IsVisible="False"
+                              ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+                            <TextBox x:Name="ModSearch" PlaceholderText="Поиск модов"
+                                     TextChanged="ModSearchChanged" KeyDown="ModSearchKeyDown" />
+                            <TextBlock x:Name="ModSearchCount" Grid.Column="1" VerticalAlignment="Center" />
+                            <Button x:Name="PreviousModMatch" Grid.Column="2" Content="↑" Click="PreviousModMatchClicked"
+                                    ToolTip.Tip="Предыдущее совпадение" />
+                            <Button x:Name="NextModMatch" Grid.Column="3" Content="↓" Click="NextModMatchClicked"
+                                    ToolTip.Tip="Следующее совпадение" />
+                            <Button Grid.Column="4" Content="×" Click="CloseModSearchClicked" ToolTip.Tip="Закрыть поиск" />
+                        </Grid>
                         <Grid Grid.Row="2">
                             <ListBox x:Name="FileList" ItemTemplate="{StaticResource FileRow}" Background="Transparent"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">

@@ -276,6 +276,7 @@ public sealed partial class MainWindow : Window
         modIcons = null;
         MainPanel.IsVisible = false;
         LoginPanel.IsVisible = true;
+        ModSearchBar.IsVisible = false;
         ModSearch.Clear();
         Password.Clear();
         PlayerPreview.SetModel("classic");
@@ -443,7 +444,12 @@ public sealed partial class MainWindow : Window
 
     private void FileViewChanged(object? sender, RoutedEventArgs e) => ShowFiles();
 
-    private void ModSearchChanged(object? sender, TextChangedEventArgs e) => ShowFiles();
+    private void ModSearchChanged(object? sender, TextChangedEventArgs e)
+    {
+        modMatchIndex = 0;
+        ShowFiles();
+        ScrollToModMatch();
+    }
 
     private void FocusModSearch(object? sender, KeyEventArgs e)
     {
@@ -451,16 +457,27 @@ public sealed partial class MainWindow : Window
             e.Key != Key.F || e.KeyModifiers is not (KeyModifiers.Control or KeyModifiers.Meta))
             return;
 
-        ModSearch.Focus();
-        ModSearch.SelectAll();
+        ModSearchBar.IsVisible = true;
+        ShowModMatchCount();
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (ModSearchBar.IsVisible)
+            {
+                ModSearch.Focus();
+                ModSearch.SelectAll();
+            }
+        });
         e.Handled = true;
     }
 
     private void ModSearchKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Escape)
+        if (e.Key == Key.Escape)
+            CloseModSearch();
+        else if (e.Key == Key.Enter)
+            MoveModMatch(e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? -1 : 1);
+        else
             return;
-        ModSearch.Clear();
         e.Handled = true;
     }
 
@@ -478,15 +495,14 @@ public sealed partial class MainWindow : Window
         var query = ModSearch?.Text?.Trim();
         var files = (graph?.Roots() ?? [])
             .Where(file => full || file.IsOptional)
-            .Where(file => MatchesSearch(file) || graph!.Dependencies(file).Any(MatchesSearch))
             .OrderBy(file => file.Path, StringComparer.OrdinalIgnoreCase)
             .Select(file => (file.Path, Row: CreateRow(file, tree, selectable: true)))
             .ToArray();
 
-        bool MatchesSearch(BuildFile file) => string.IsNullOrEmpty(query) ||
-            file.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            file.Path.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            file.Card?.Description?.Contains(query, StringComparison.OrdinalIgnoreCase) == true;
+        bool MatchesSearch(BuildFile file) => !string.IsNullOrEmpty(query) &&
+            (file.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+             file.Path.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+             file.Card?.Description?.Contains(query, StringComparison.OrdinalIgnoreCase) == true);
 
         BuildFileRow CreateRow(BuildFile file, bool compact, bool selectable)
         {
@@ -499,6 +515,7 @@ public sealed partial class MainWindow : Window
                 Unmanaged = excluded,
                 Status = excluded ? "Ручное управление" : row.Status,
                 Compact = compact,
+                SearchMatch = MatchesSearch(file),
                 CanSelect = selectable && file.IsOptional && !excluded,
                 Selected = selected.Contains(key),
                 SelectionKey = key,
@@ -508,8 +525,10 @@ public sealed partial class MainWindow : Window
 
         FileList.IsVisible = !tree && files.Length > 0;
         FileTree.IsVisible = tree && files.Length > 0;
-        FileTree.ItemsSource = tree ? GroupFiles(files) : null;
-        FileList.ItemsSource = tree ? null : files.Select(item => item.Row).ToArray();
+        var rows = tree ? GroupFiles(files) : files.Select(item => item.Row).ToArray();
+        FileTree.ItemsSource = tree ? rows : null;
+        FileList.ItemsSource = tree ? null : rows;
+        UpdateModMatches(rows);
     }
 
     private HashSet<string> OptionalFor(PublishedBuild build) =>
